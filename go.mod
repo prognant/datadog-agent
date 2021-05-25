@@ -105,16 +105,15 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 	github.com/golang/mock v1.5.0
-	github.com/golang/protobuf v1.4.3
+	github.com/golang/protobuf v1.5.2
 	github.com/golang/snappy v0.0.3 // indirect
-	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/google/gofuzz v1.2.0
 	github.com/google/gopacket v1.1.17
 	github.com/google/pprof v0.0.0-20210125172800-10e9aeb4a998
 	github.com/gorilla/mux v1.8.0
 	github.com/gosnmp/gosnmp v1.31.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.0
-	github.com/grpc-ecosystem/grpc-gateway v1.14.1
+	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/h2non/filetype v1.1.1
 	github.com/hashicorp/consul/api v1.8.1
 	github.com/hashicorp/go-multierror v1.1.1
@@ -169,7 +168,7 @@ require (
 	github.com/vito/go-sse v1.0.0 // indirect
 	github.com/vmihailenco/msgpack/v4 v4.3.11
 	github.com/xeipuuv/gojsonschema v0.0.0-20180618132009-1d523034197f
-	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
+	go.etcd.io/etcd/client/v2 v2.305.0-beta.4
 	go.uber.org/automaxprocs v1.2.0
 	golang.org/x/crypto v0.0.0-20210317152858-513c2a44f670 // indirect
 	golang.org/x/mobile v0.0.0-20201217150744-e6ae53a27f4f
@@ -181,7 +180,7 @@ require (
 	golang.org/x/tools v0.1.0
 	gomodules.xyz/jsonpatch/v3 v3.0.1
 	google.golang.org/genproto v0.0.0-20201210142538-e3217bee35cc
-	google.golang.org/grpc v1.34.0
+	google.golang.org/grpc v1.37.0
 	gopkg.in/DataDog/dd-trace-go.v1 v1.29.0-rc.1.0.20210226170446-a8dc39ec3484
 	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
 	gopkg.in/ini.v1 v1.55.0 // indirect
