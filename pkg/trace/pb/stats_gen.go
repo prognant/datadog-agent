@@ -723,6 +723,31 @@ func (z *ClientStatsPayload) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "Service")
 				return
 			}
+		case "EntityID":
+			z.EntityID, err = dc.ReadString()
+			if err != nil {
+				err = msgp.WrapError(err, "EntityID")
+				return
+			}
+		case "EntityTags":
+			var zb0003 uint32
+			zb0003, err = dc.ReadArrayHeader()
+			if err != nil {
+				err = msgp.WrapError(err, "EntityTags")
+				return
+			}
+			if cap(z.EntityTags) >= int(zb0003) {
+				z.EntityTags = (z.EntityTags)[:zb0003]
+			} else {
+				z.EntityTags = make([]string, zb0003)
+			}
+			for za0002 := range z.EntityTags {
+				z.EntityTags[za0002], err = dc.ReadString()
+				if err != nil {
+					err = msgp.WrapError(err, "EntityTags", za0002)
+					return
+				}
+			}
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -736,9 +761,9 @@ func (z *ClientStatsPayload) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *ClientStatsPayload) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 10
+	// map header, size 12
 	// write "Hostname"
-	err = en.Append(0x8a, 0xa8, 0x48, 0x6f, 0x73, 0x74, 0x6e, 0x61, 0x6d, 0x65)
+	err = en.Append(0x8c, 0xa8, 0x48, 0x6f, 0x73, 0x74, 0x6e, 0x61, 0x6d, 0x65)
 	if err != nil {
 		return
 	}
@@ -844,15 +869,42 @@ func (z *ClientStatsPayload) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "Service")
 		return
 	}
+	// write "EntityID"
+	err = en.Append(0xa8, 0x45, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x49, 0x44)
+	if err != nil {
+		return
+	}
+	err = en.WriteString(z.EntityID)
+	if err != nil {
+		err = msgp.WrapError(err, "EntityID")
+		return
+	}
+	// write "EntityTags"
+	err = en.Append(0xaa, 0x45, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x54, 0x61, 0x67, 0x73)
+	if err != nil {
+		return
+	}
+	err = en.WriteArrayHeader(uint32(len(z.EntityTags)))
+	if err != nil {
+		err = msgp.WrapError(err, "EntityTags")
+		return
+	}
+	for za0002 := range z.EntityTags {
+		err = en.WriteString(z.EntityTags[za0002])
+		if err != nil {
+			err = msgp.WrapError(err, "EntityTags", za0002)
+			return
+		}
+	}
 	return
 }
 
 // MarshalMsg implements msgp.Marshaler
 func (z *ClientStatsPayload) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 10
+	// map header, size 12
 	// string "Hostname"
-	o = append(o, 0x8a, 0xa8, 0x48, 0x6f, 0x73, 0x74, 0x6e, 0x61, 0x6d, 0x65)
+	o = append(o, 0x8c, 0xa8, 0x48, 0x6f, 0x73, 0x74, 0x6e, 0x61, 0x6d, 0x65)
 	o = msgp.AppendString(o, z.Hostname)
 	// string "Env"
 	o = append(o, 0xa3, 0x45, 0x6e, 0x76)
@@ -888,6 +940,15 @@ func (z *ClientStatsPayload) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "Service"
 	o = append(o, 0xa7, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65)
 	o = msgp.AppendString(o, z.Service)
+	// string "EntityID"
+	o = append(o, 0xa8, 0x45, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x49, 0x44)
+	o = msgp.AppendString(o, z.EntityID)
+	// string "EntityTags"
+	o = append(o, 0xaa, 0x45, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x54, 0x61, 0x67, 0x73)
+	o = msgp.AppendArrayHeader(o, uint32(len(z.EntityTags)))
+	for za0002 := range z.EntityTags {
+		o = msgp.AppendString(o, z.EntityTags[za0002])
+	}
 	return
 }
 
@@ -982,6 +1043,31 @@ func (z *ClientStatsPayload) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "Service")
 				return
 			}
+		case "EntityID":
+			z.EntityID, bts, err = msgp.ReadStringBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "EntityID")
+				return
+			}
+		case "EntityTags":
+			var zb0003 uint32
+			zb0003, bts, err = msgp.ReadArrayHeaderBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "EntityTags")
+				return
+			}
+			if cap(z.EntityTags) >= int(zb0003) {
+				z.EntityTags = (z.EntityTags)[:zb0003]
+			} else {
+				z.EntityTags = make([]string, zb0003)
+			}
+			for za0002 := range z.EntityTags {
+				z.EntityTags[za0002], bts, err = msgp.ReadStringBytes(bts)
+				if err != nil {
+					err = msgp.WrapError(err, "EntityTags", za0002)
+					return
+				}
+			}
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -1000,7 +1086,10 @@ func (z *ClientStatsPayload) Msgsize() (s int) {
 	for za0001 := range z.Stats {
 		s += z.Stats[za0001].Msgsize()
 	}
-	s += 5 + msgp.StringPrefixSize + len(z.Lang) + 14 + msgp.StringPrefixSize + len(z.TracerVersion) + 10 + msgp.StringPrefixSize + len(z.RuntimeID) + 9 + msgp.Uint64Size + 17 + msgp.StringPrefixSize + len(z.AgentAggregation) + 8 + msgp.StringPrefixSize + len(z.Service)
+	s += 5 + msgp.StringPrefixSize + len(z.Lang) + 14 + msgp.StringPrefixSize + len(z.TracerVersion) + 10 + msgp.StringPrefixSize + len(z.RuntimeID) + 9 + msgp.Uint64Size + 17 + msgp.StringPrefixSize + len(z.AgentAggregation) + 8 + msgp.StringPrefixSize + len(z.Service) + 9 + msgp.StringPrefixSize + len(z.EntityID) + 11 + msgp.ArrayHeaderSize
+	for za0002 := range z.EntityTags {
+		s += msgp.StringPrefixSize + len(z.EntityTags[za0002])
+	}
 	return
 }
 

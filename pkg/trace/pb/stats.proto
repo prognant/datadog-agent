@@ -34,6 +34,11 @@ message ClientStatsPayload {
 	// service is the main service of the tracer.
 	// It is part of unified tagging: https://docs.datadoghq.com/getting_started/tagging/unified_service_tagging
 	string service = 10;
+	// the ID of the entity sending the stats. Functionally the same as the dogstatsd
+	// 'dd.internal.entity_id' tag.
+	string entityID = 11;
+	// the tags associated with the entityID
+	repeated string entityTags = 12;
 }
 
 // ClientStatsBucket is a time bucket containing aggregated stats.
