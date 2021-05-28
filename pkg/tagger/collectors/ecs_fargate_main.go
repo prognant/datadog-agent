@@ -9,6 +9,7 @@ package collectors
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/errors"
@@ -120,9 +121,15 @@ func (c *ECSFargateCollector) Fetch(container string) ([]string, []string, []str
 func (c *ECSFargateCollector) parseExpires(idList []string) ([]*TagInfo, error) {
 	var output []*TagInfo
 	for _, id := range idList {
+		var entityID string
+		if strings.HasPrefix(id, FargateTaskEntityPrefix) {
+			entityID = id
+		} else {
+			entityID = containers.BuildTaggerEntityName(id)
+		}
 		info := &TagInfo{
 			Source:       ecsFargateCollectorName,
-			Entity:       containers.BuildTaggerEntityName(id),
+			Entity:       entityID,
 			DeleteEntity: true,
 		}
 		output = append(output, info)

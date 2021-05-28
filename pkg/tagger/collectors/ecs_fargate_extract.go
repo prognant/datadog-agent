@@ -41,34 +41,26 @@ func (c *ECSFargateCollector) parseMetadata(meta *v2.Task, parseAll bool) ([]*Ta
 		},
 	}
 
+	taskEntityID := FargateTaskEntityPrefix + meta.TaskARN
+	if c.expire.Update(taskEntityID, now) || parseAll {
+		tags := c.parseTaskTags(meta)
+
+		low, orch, high, standard := tags.Compute()
+		info := &TagInfo{
+			Source:               ecsFargateCollectorName,
+			Entity:               taskEntityID,
+			HighCardTags:         high,
+			OrchestratorCardTags: orch,
+			LowCardTags:          low,
+			StandardTags:         standard,
+		}
+		output = append(output, info)
+	}
+
 	for _, ctr := range meta.Containers {
 		if c.expire.Update(ctr.DockerID, now) || parseAll {
-			tags := utils.NewTagList()
-
-			// cluster
-			clusterName := parseECSClusterName(meta.ClusterName)
-			if !config.Datadog.GetBool("disable_cluster_name_tag_key") {
-				tags.AddLow("cluster_name", clusterName)
-			}
-			tags.AddLow("ecs_cluster_name", clusterName)
-
-			// aws region from cluster arn
-			region := parseFargateRegion(meta.ClusterName)
-			if region != "" {
-				tags.AddLow("region", region)
-			}
-
-			// the AvailabilityZone metadata is only available for
-			// Fargate tasks using platform version 1.4 or later
-			availabilityZone := meta.AvailabilityZone
-			if availabilityZone != "" {
-				tags.AddLow("availability_zone", availabilityZone)
-			}
-
-			// task
-			tags.AddLow("task_family", meta.Family)
-			tags.AddLow("task_version", meta.Version)
-			tags.AddOrchestrator("task_arn", meta.TaskARN)
+			// Start with all the task-level tags
+			tags := c.parseTaskTags(meta)
 
 			// container
 			tags.AddLow("ecs_container_name", ctr.Name)
@@ -124,6 +116,38 @@ func (c *ECSFargateCollector) parseMetadata(meta *v2.Task, parseAll bool) ([]*Ta
 	}
 
 	return output, nil
+}
+
+// parseTaskTags parses and inserts all the task-level tags into a new TagList
+func (c *ECSFargateCollector) parseTaskTags(meta *v2.Task) *utils.TagList {
+	tags := utils.NewTagList()
+
+	// cluster
+	clusterName := parseECSClusterName(meta.ClusterName)
+	if !config.Datadog.GetBool("disable_cluster_name_tag_key") {
+		tags.AddLow("cluster_name", clusterName)
+	}
+	tags.AddLow("ecs_cluster_name", clusterName)
+
+	// aws region from cluster arn
+	region := parseFargateRegion(meta.ClusterName)
+	if region != "" {
+		tags.AddLow("region", region)
+	}
+
+	// the AvailabilityZone metadata is only available for
+	// Fargate tasks using platform version 1.4 or later
+	availabilityZone := meta.AvailabilityZone
+	if availabilityZone != "" {
+		tags.AddLow("availability_zone", availabilityZone)
+	}
+
+	// task
+	tags.AddLow("task_family", meta.Family)
+	tags.AddLow("task_version", meta.Version)
+	tags.AddOrchestrator("task_arn", meta.TaskARN)
+
+	return tags
 }
 
 // parseECSClusterName allows to handle user-friendly values and arn values

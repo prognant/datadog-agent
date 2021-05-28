@@ -77,6 +77,24 @@ func TestParseMetadata(t *testing.T) {
 		},
 		{
 			Source: "ecs_fargate",
+			Entity: "task_arn://arn:aws:ecs:eu-central-1:601427279990:task/5308d232-9002-4224-97b5-e1d4843b5244",
+			LowCardTags: []string{
+				"cluster_name:xvello-fargate",
+				"ecs_cluster_name:xvello-fargate",
+				"task_family:redis-datadog",
+				"task_version:3",
+				"region:eu-central-1",
+				"availability_zone:eu-central-1a",
+			},
+			OrchestratorCardTags: []string{
+				"task_arn:arn:aws:ecs:eu-central-1:601427279990:task/5308d232-9002-4224-97b5-e1d4843b5244",
+			},
+			HighCardTags: []string{},
+			StandardTags: []string{},
+			DeleteEntity: false,
+		},
+		{
+			Source: "ecs_fargate",
 			Entity: "container_id://1cd08ea0fc13ee643fa058a8e184861661eb29325c7df59ccc543597018ffcd4",
 			LowCardTags: []string{
 				"docker_image:datadog/agent-dev:xvello-process-kubelet",
@@ -150,15 +168,15 @@ func TestParseMetadata(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"unknownID"}, expires)
 
-	// Diff parsing should show 0 containers + 1 tag for task_arn
+	// Diff parsing should show 0 tasks + 0 containers + 1 tag for task_arn
 	updates, err = collector.parseMetadata(&meta, false)
 	assert.NoError(t, err)
 	assert.Len(t, updates, 1)
 
-	// Full parsing should show 3 containers + 1 tag for task_arn
+	// Full parsing should show 1 task + 3 containers + 1 tag for task_arn
 	updates, err = collector.parseMetadata(&meta, true)
 	assert.NoError(t, err)
-	assert.Len(t, updates, 4)
+	assert.Len(t, updates, 5)
 }
 
 func TestParseMetadataV10(t *testing.T) {
@@ -178,6 +196,22 @@ func TestParseMetadataV10(t *testing.T) {
 			Source:      "ecs_fargate",
 			Entity:      OrchestratorScopeEntityID,
 			LowCardTags: []string{},
+			OrchestratorCardTags: []string{
+				"task_arn:arn:aws:ecs:eu-west-1:172597598159:task/648ca535-cbe0-4de7-b102-28e50b81e888",
+			},
+			HighCardTags: []string{},
+			StandardTags: []string{},
+			DeleteEntity: false,
+		},
+		{
+			Source: "ecs_fargate",
+			Entity: "task_arn://arn:aws:ecs:eu-west-1:172597598159:task/648ca535-cbe0-4de7-b102-28e50b81e888",
+			LowCardTags: []string{
+				"cluster_name:pierrem-test-fargate",
+				"ecs_cluster_name:pierrem-test-fargate",
+				"task_family:redis-datadog",
+				"task_version:1",
+			},
 			OrchestratorCardTags: []string{
 				"task_arn:arn:aws:ecs:eu-west-1:172597598159:task/648ca535-cbe0-4de7-b102-28e50b81e888",
 			},
@@ -277,6 +311,7 @@ func TestParseExpires(t *testing.T) {
 	dead := []string{
 		"1cd08ea0fc13ee643fa058a8e184861661eb29325c7df59ccc543597018ffcd4",
 		"0fc5bb7a1b29adc30997eabae1415a98fe85591eb7432c23349703a53aa43280",
+		"task_arn://arn:aws:ecs:eu-west-1:172597598159:task/648ca535-cbe0-4de7-b102-28e50b81e888",
 	}
 
 	expected := []*TagInfo{
@@ -288,6 +323,11 @@ func TestParseExpires(t *testing.T) {
 		{
 			Source:       "ecs_fargate",
 			Entity:       "container_id://0fc5bb7a1b29adc30997eabae1415a98fe85591eb7432c23349703a53aa43280",
+			DeleteEntity: true,
+		},
+		{
+			Source:       "ecs_fargate",
+			Entity:       "task_arn://arn:aws:ecs:eu-west-1:172597598159:task/648ca535-cbe0-4de7-b102-28e50b81e888",
 			DeleteEntity: true,
 		},
 	}

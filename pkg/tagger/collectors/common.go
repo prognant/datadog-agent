@@ -18,6 +18,9 @@ const (
 	// OrchestratorScopeEntityID defines the orchestrator scope entity ID
 	OrchestratorScopeEntityID = "internal://orchestrator-scope-entity-id"
 
+	// FargateTaskEntityPrefix defines the entity ID prefix for Fargate tasks
+	FargateTaskEntityPrefix = "task_arn://"
+
 	autodiscoveryLabelTagsKey = "com.datadoghq.ad.tags"
 )
 
