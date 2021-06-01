@@ -17,7 +17,7 @@ import (
 func TestGrain(t *testing.T) {
 	assert := assert.New(t)
 	s := pb.Span{Service: "thing", Name: "other", Resource: "yo"}
-	aggr := NewAggregationFromSpan(&s, "default", "default")
+	aggr := NewAggregationFromSpan(&s, "default", "default", false)
 	assert.Equal(Aggregation{
 		Env:      "default",
 		Hostname: "default",
@@ -30,7 +30,7 @@ func TestGrain(t *testing.T) {
 func TestGrainWithExtraTags(t *testing.T) {
 	assert := assert.New(t)
 	s := pb.Span{Service: "thing", Name: "other", Resource: "yo", Meta: map[string]string{tagHostname: "host-id", tagVersion: "v0", tagStatusCode: "418", tagOrigin: "synthetics-browser"}}
-	aggr := NewAggregationFromSpan(&s, "default", "default")
+	aggr := NewAggregationFromSpan(&s, "default", "default", false)
 	assert.Equal(Aggregation{
 		Env:        "default",
 		Service:    "thing",
@@ -40,6 +40,32 @@ func TestGrainWithExtraTags(t *testing.T) {
 		StatusCode: 418,
 		Version:    "v0",
 		Synthetics: true,
+	}, aggr)
+}
+func TestServerlessGrainWithNoEntityID(t *testing.T) {
+	assert := assert.New(t)
+	s := pb.Span{Service: "thing", Name: "other", Resource: "yo", Meta: map[string]string{tagHostname: "incorrect-host-id"}}
+	aggr := NewAggregationFromSpan(&s, "env", "agentHostname", true)
+	assert.Equal(Aggregation{
+		Env:      "env",
+		Service:  "thing",
+		Resource: "yo",
+		Name:     "other",
+		Hostname: "",
+	}, aggr)
+}
+
+func TestServerlessGrainWithEntityID(t *testing.T) {
+	assert := assert.New(t)
+	s := pb.Span{Service: "thing", Name: "other", Resource: "yo", Meta: map[string]string{tagHostname: "incorrect-host-id", "_dd.tags.container": "foo:bar,task_arn:ARN"}}
+	aggr := NewAggregationFromSpan(&s, "env", "agentHostname", true)
+	assert.Equal(Aggregation{
+		Env:      "env",
+		Service:  "thing",
+		Resource: "yo",
+		Name:     "other",
+		Hostname: "",
+		EntityID: "task_arn://ARN",
 	}, aggr)
 }
 
@@ -52,7 +78,7 @@ func BenchmarkHandleSpanRandom(b *testing.B) {
 		traceutil.ComputeTopLevel(benchTrace)
 		wt := NewWeightedTrace(benchTrace, root)
 		for _, span := range wt {
-			sb.HandleSpan(span, "dev", "hostname")
+			sb.HandleSpan(span, "dev", "hostname", false)
 		}
 	}
 }

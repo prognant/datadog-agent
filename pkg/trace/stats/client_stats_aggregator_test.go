@@ -68,6 +68,8 @@ func getTestStatsWithStart(start time.Time) pb.ClientStatsPayload {
 	p := pb.ClientStatsPayload{}
 	fuzzer.Fuzz(&p)
 	p.Stats = []pb.ClientStatsBucket{b}
+	p.EntityID = ""
+	p.EntityTags = nil
 	return p
 }
 

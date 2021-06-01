@@ -9,10 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DataDog/datadog-agent/pkg/tagger"
+	"github.com/DataDog/datadog-agent/pkg/tagger/collectors"
 	"github.com/DataDog/datadog-agent/pkg/trace/config"
 	"github.com/DataDog/datadog-agent/pkg/trace/info"
 	"github.com/DataDog/datadog-agent/pkg/trace/pb"
 	"github.com/DataDog/datadog-agent/pkg/trace/watchdog"
+	"github.com/DataDog/datadog-agent/pkg/util/fargate"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 )
 
@@ -44,6 +47,7 @@ type Concentrator struct {
 	mu            sync.Mutex
 	agentEnv      string
 	agentHostname string
+	isServerless  bool
 }
 
 // NewConcentrator initializes a new concentrator ready to be started
@@ -62,6 +66,7 @@ func NewConcentrator(conf *config.AgentConfig, out chan pb.StatsPayload, now tim
 		exit:          make(chan struct{}),
 		agentEnv:      conf.DefaultEnv,
 		agentHostname: conf.Hostname,
+		isServerless:  fargate.IsFargateInstance(),
 	}
 	return &c
 }
@@ -151,7 +156,7 @@ func (c *Concentrator) addNow(i *Input) {
 			b = NewRawBucket(uint64(btime), uint64(c.bsize))
 			c.buckets[btime] = b
 		}
-		b.HandleSpan(s, env, c.agentHostname)
+		b.HandleSpan(s, env, c.agentHostname, c.isServerless)
 	}
 }
 
@@ -187,14 +192,30 @@ func (c *Concentrator) flushNow(now int64) pb.StatsPayload {
 	c.mu.Unlock()
 	sb := make([]pb.ClientStatsPayload, 0, len(m))
 	for k, s := range m {
-		sb = append(sb, pb.ClientStatsPayload{
+		p := pb.ClientStatsPayload{
 			Env:      k.env,
 			Hostname: k.hostname,
 			Version:  k.version,
 			Stats:    s,
-		})
+			EntityID: k.entityID,
+		}
+		if k.entityID != "" {
+			entityTags, err := tagger.Tag(k.entityID, collectors.HighCardinality)
+			if err != nil {
+				log.Errorf("Failed to fetch stats payload tags: %s", err)
+			} else {
+				p.EntityTags = entityTags
+			}
+		}
+		sb = append(sb, p)
 	}
-	return pb.StatsPayload{Stats: sb, AgentHostname: c.agentHostname, AgentEnv: c.agentEnv, AgentVersion: info.Version}
+
+	return pb.StatsPayload{
+		Stats:         sb,
+		AgentHostname: c.agentHostname,
+		AgentEnv:      c.agentEnv,
+		AgentVersion:  info.Version,
+	}
 }
 
 // alignTs returns the provided timestamp truncated to the bucket size.

@@ -28,6 +28,7 @@ type Aggregation struct {
 	Name       string
 	Type       string
 	Hostname   string
+	EntityID   string
 	StatusCode uint32
 	Version    string
 	Synthetics bool
@@ -47,12 +48,17 @@ func getStatusCode(s *pb.Span) uint32 {
 }
 
 // NewAggregationFromSpan creates a new aggregation from the provided span and env
-func NewAggregationFromSpan(s *pb.Span, env string, agentHostname string) Aggregation {
+func NewAggregationFromSpan(s *pb.Span, env string, agentHostname string, isServerless bool) Aggregation {
 	synthetics := strings.HasPrefix(traceutil.GetMetaDefault(s, tagOrigin, ""), tagSynthetics)
-	hostname := traceutil.GetMetaDefault(s, tagHostname, "")
-	if hostname == "" {
-		hostname = agentHostname
+	var hostname string
+	if !isServerless {
+		hostname = traceutil.GetMetaDefault(s, tagHostname, "")
+		if hostname == "" {
+			hostname = agentHostname
+		}
 	}
+	entityID := getSpanEntity(s, isServerless)
+
 	return Aggregation{
 		Env:        env,
 		Resource:   s.Resource,
@@ -60,6 +66,7 @@ func NewAggregationFromSpan(s *pb.Span, env string, agentHostname string) Aggreg
 		Name:       s.Name,
 		Type:       s.Type,
 		Hostname:   hostname,
+		EntityID:   entityID,
 		StatusCode: getStatusCode(s),
 		Version:    traceutil.GetMetaDefault(s, tagVersion, ""),
 		Synthetics: synthetics,
@@ -78,4 +85,25 @@ func NewAggregationFromGroup(env, hostname, version string, g pb.ClientGroupedSt
 		StatusCode: g.HTTPStatusCode,
 		Synthetics: g.Synthetics,
 	}
+}
+
+func getSpanEntity(s *pb.Span, isServerless bool) string {
+	if isServerless {
+		// Try to find the Fargate task_arn in the span Metadata
+		if containerTagsStr, ok := s.Meta["_dd.tags.container"]; ok {
+			for _, t := range strings.Split(containerTagsStr, ",") {
+				if k, v := splitTag(t); k == "task_arn" {
+					return "task_arn://" + v
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func splitTag(tag string) (string, string) {
+	if i := strings.Index(tag, ":"); i >= 0 {
+		return tag[:i], tag[i+1:]
+	}
+	return tag, ""
 }

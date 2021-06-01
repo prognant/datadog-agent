@@ -21,7 +21,7 @@ func BucketWithSpans(spans []*stats.WeightedSpan) pb.ClientStatsBucket {
 	for _, s := range spans {
 		// override version to ensure all buckets will have the same payload key.
 		s.Meta["version"] = ""
-		srb.HandleSpan(s, defaultEnv, defaultHostname)
+		srb.HandleSpan(s, defaultEnv, defaultHostname, false)
 	}
 	buckets := srb.Export()
 	if len(buckets) != 1 {

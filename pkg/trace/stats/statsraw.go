@@ -110,6 +110,7 @@ type RawBucket struct {
 // PayloadKey uniquely identifies a ClientStatsPayload inside a StatsPayload
 type PayloadKey struct {
 	hostname string
+	entityID string
 	version  string
 	env      string
 }
@@ -137,6 +138,7 @@ func (sb *RawBucket) Export() map[PayloadKey]pb.ClientStatsBucket {
 		}
 		key := PayloadKey{
 			hostname: k.Hostname,
+			entityID: k.EntityID,
 			version:  k.Version,
 			env:      k.Env,
 		}
@@ -154,11 +156,11 @@ func (sb *RawBucket) Export() map[PayloadKey]pb.ClientStatsBucket {
 }
 
 // HandleSpan adds the span to this bucket stats, aggregated with the finest grain matching given aggregators
-func (sb *RawBucket) HandleSpan(s *WeightedSpan, env string, agentHostname string) {
+func (sb *RawBucket) HandleSpan(s *WeightedSpan, env string, agentHostname string, isServerless bool) {
 	if env == "" {
 		panic("env should never be empty")
 	}
-	aggr := NewAggregationFromSpan(s.Span, env, agentHostname)
+	aggr := NewAggregationFromSpan(s.Span, env, agentHostname, isServerless)
 	sb.add(s, aggr)
 }
 
