@@ -13,7 +13,6 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/api/util"
 	"github.com/DataDog/datadog-agent/pkg/config"
 	commonsettings "github.com/DataDog/datadog-agent/pkg/config/settings"
-	settingshttp "github.com/DataDog/datadog-agent/pkg/config/settings/http"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -76,12 +75,7 @@ func getSettingsClient() (commonsettings.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	ipcAddress, err := config.GetIPCAddress()
-	if err != nil {
-		return nil, err
-	}
-	hc := util.GetClient(false)
-	return settingshttp.NewClient(hc, fmt.Sprintf("https://%v:%v/agent/config", ipcAddress, config.Datadog.GetInt("cmd_port")), "datadog-agent"), nil
+	return common.NewSettingsClient()
 }
 
 func showRuntimeConfiguration(_ *cobra.Command, _ []string) error {
