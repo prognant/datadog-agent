@@ -37,6 +37,7 @@ type Endpoint struct {
 	Host                    string
 	Port                    int
 	UseSSL                  bool
+	NoSSL                   bool `mapstructure:"no_ssl" json:"no_ssl"`
 	UseCompression          bool `mapstructure:"use_compression" json:"use_compression"`
 	CompressionLevel        int  `mapstructure:"compression_level" json:"compression_level"`
 	ProxyAddress            string

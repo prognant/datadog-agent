@@ -183,7 +183,7 @@ func buildTCPEndpoints(logsConfig *LogsConfigKeys) (*Endpoints, error) {
 
 	additionals := logsConfig.getAdditionalEndpoints()
 	for i := 0; i < len(additionals); i++ {
-		additionals[i].UseSSL = main.UseSSL
+		additionals[i].UseSSL = !(additionals[i].NoSSL || !main.UseSSL)
 		additionals[i].ProxyAddress = proxyAddress
 		additionals[i].APIKey = coreConfig.SanitizeAPIKey(additionals[i].APIKey)
 	}
@@ -236,7 +236,7 @@ func BuildHTTPEndpointsWithConfig(logsConfig *LogsConfigKeys, endpointPrefix str
 
 	additionals := logsConfig.getAdditionalEndpoints()
 	for i := 0; i < len(additionals); i++ {
-		additionals[i].UseSSL = main.UseSSL
+		additionals[i].UseSSL = !(additionals[i].NoSSL || !main.UseSSL)
 		additionals[i].APIKey = coreConfig.SanitizeAPIKey(additionals[i].APIKey)
 		if additionals[i].Version == 0 {
 			additionals[i].Version = main.Version
