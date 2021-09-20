@@ -18,7 +18,7 @@ type SyncForwarder struct {
 }
 
 // NewSyncForwarder returns a new synchronous forwarder.
-func NewSyncForwarder(keysPerDomains map[string][]string, timeout time.Duration) *SyncForwarder {
+func NewSyncForwarder(keysPerDomains map[string]DomainResolver, timeout time.Duration) *SyncForwarder {
 	return &SyncForwarder{
 		defaultForwarder: NewDefaultForwarder(NewOptions(keysPerDomains)),
 		client: &http.Client{

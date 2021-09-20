@@ -175,6 +175,7 @@ func InitConfig(config Config) {
 	// Don't set a default on 'site' to allow detecting with viper whether it's set in config
 	config.BindEnv("site")
 	config.BindEnv("dd_url")
+	config.BindEnv("metrics_dd_url")
 	config.BindEnvAndSetDefault("app_key", "")
 	config.BindEnvAndSetDefault("cloud_provider_metadata", []string{"aws", "gcp", "azure", "alibaba"})
 	config.SetDefault("proxy", nil)

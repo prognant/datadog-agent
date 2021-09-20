@@ -365,8 +365,26 @@ func StartAgent() error {
 		log.Error("Misconfiguration of agent endpoints: ", err)
 	}
 
+	// Injects overrides
+	resolvers := make(map[string]forwarder.DomainResolver)
+	for d, k := range keysPerDomain {
+		r := forwarder.DomainResolver{
+			BaseDomain: d,
+			ApiKeys:    k,
+			Overrides:  make(map[string]string),
+		}
+		if config.Datadog.IsSet("metrics_dd_url") &&
+			config.Datadog.GetString("metrics_dd_url") != "" &&
+			config.GetMainInfraEndpoint() == d {
+			r.Overrides["/api/beta/sketches"] = config.Datadog.GetString("metrics_dd_url")
+			r.Overrides["/api/v2/series"] = config.Datadog.GetString("metrics_dd_url")
+			r.Overrides["/api/v1/series"] = config.Datadog.GetString("metrics_dd_url")
+		}
+		resolvers[d] = r
+	}
+
 	// Enable core agent specific features like persistence-to-disk
-	options := forwarder.NewOptions(keysPerDomain)
+	options := forwarder.NewOptions(resolvers)
 	options.EnabledFeatures = forwarder.SetFeature(options.EnabledFeatures, forwarder.CoreFeatures)
 
 	common.Forwarder = forwarder.NewDefaultForwarder(options)
