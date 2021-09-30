@@ -716,7 +716,7 @@ func InitConfig(config Config) {
 	config.BindEnvAndSetDefault("logs_config.use_http", false)
 	config.BindEnvAndSetDefault("logs_config.use_tcp", false)
 
-	bindEnvAndSetLogsConfigKeys(config, "logs_config.")
+	bindEnvAndSetLogsConfigKeysWithVector(config, "logs_config.", "logs.")
 	bindEnvAndSetLogsConfigKeys(config, "database_monitoring.samples.")
 	bindEnvAndSetLogsConfigKeys(config, "database_monitoring.activity.")
 	bindEnvAndSetLogsConfigKeys(config, "database_monitoring.metrics.")
@@ -1200,6 +1200,12 @@ func bindEnvAndSetLogsConfigKeys(config Config, prefix string) {
 	config.BindEnvAndSetDefault(prefix+"sender_recovery_interval", DefaultForwarderRecoveryInterval)
 	config.BindEnvAndSetDefault(prefix+"sender_recovery_reset", false)
 	config.BindEnvAndSetDefault(prefix+"use_v2_api", true)
+}
+
+func bindEnvAndSetLogsConfigKeysWithVector(config Config, prefix, vector_prefix string) {
+	bindEnvAndSetLogsConfigKeys(config, prefix)
+	config.BindEnvAndSetDefault("vector."+vector_prefix+"enabled", false)
+	config.BindEnv("vector." + vector_prefix + "url")
 }
 
 // getDomainPrefix provides the right prefix for agent X.Y.Z

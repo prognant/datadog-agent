@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -122,7 +123,7 @@ func BuildEndpointsWithConfig(logsConfig *LogsConfigKeys, endpointPrefix string,
 		log.Warnf("Use of illegal configuration parameter, if you need to send your logs to a proxy, "+
 			"please use '%s' and '%s' instead", logsConfig.getConfigKey("logs_dd_url"), logsConfig.getConfigKey("logs_no_ssl"))
 	}
-	if logsConfig.isForceHTTPUse() || (bool(httpConnectivity) && !(logsConfig.isForceTCPUse() || logsConfig.isSocks5ProxySet() || logsConfig.hasAdditionalEndpoints())) {
+	if logsConfig.isForceHTTPUse() || logsConfig.vectorEnabled() || (bool(httpConnectivity) && !(logsConfig.isForceTCPUse() || logsConfig.isSocks5ProxySet() || logsConfig.hasAdditionalEndpoints())) {
 		return BuildHTTPEndpointsWithConfig(logsConfig, endpointPrefix, intakeTrackType, intakeProtocol, intakeOrigin)
 	}
 	log.Warnf("You are currently sending Logs to Datadog through TCP (either because %s or %s is set or the HTTP connectivity test has failed) "+
@@ -224,7 +225,37 @@ func BuildHTTPEndpointsWithConfig(logsConfig *LogsConfigKeys, endpointPrefix str
 		main.Version = EPIntakeVersion1
 	}
 
-	if logsDDURL, logsDDURLDefined := logsConfig.logsDDURL(); logsDDURLDefined {
+	if vectorUrl, vectorUrlDefined := logsConfig.getVectorUrl(); logsConfig.vectorEnabled() && vectorUrlDefined {
+		u, err := url.Parse(vectorUrl)
+		if err != nil {
+			return nil, fmt.Errorf("could not parse %s: %v", vectorUrl, err)
+		}
+		if u.Host != "" {
+			host, port, err := parseAddress(u.Host)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse %s: %v", u.Host, err)
+			}
+			main.Host = host
+			main.Port = port
+			switch u.Scheme {
+			case "https":
+				main.UseSSL = true
+			case "http":
+				main.UseSSL = false
+			default:
+				return nil, fmt.Errorf("only http and https are supported in vector URLs: %s", vectorUrl)
+			}
+		} else {
+			host, port, err := parseAddress(vectorUrl)
+			if err != nil {
+				return nil, fmt.Errorf("could not parse %s: %v", u.Host, err)
+			}
+			main.Host = host
+			main.Port = port
+			main.UseSSL = !defaultNoSSL
+		}
+
+	} else if logsDDURL, logsDDURLDefined := logsConfig.logsDDURL(); logsDDURLDefined {
 		host, port, err := parseAddress(logsDDURL)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse %s: %v", logsConfig.getConfigKey("logs_dd_url"), err)
