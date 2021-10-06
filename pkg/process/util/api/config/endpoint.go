@@ -29,12 +29,7 @@ func KeysPerDomains(endpoints []Endpoint) map[string]forwarder.DomainResolver {
 	domainResolvers := make(map[string]forwarder.DomainResolver)
 
 	for d, k := range keysPerDomains {
-		r := forwarder.DomainResolver{
-			BaseDomain: d,
-			Overrides:  make(map[string]string),
-			ApiKeys:    k,
-		}
-		domainResolvers[d] = r
+		domainResolvers[d] = forwarder.NewSingleDomainResolver(d, k)
 	}
 
 	return domainResolvers

@@ -953,6 +953,10 @@ func InitConfig(config Config) {
 	// command line options
 	config.SetKnown("cmd.check.fullsketches")
 
+	// Vector integration
+	config.BindEnvAndSetDefault("vector.metrics.enabled", false)
+	config.BindEnvAndSetDefault("vector.metrics.url", false)
+
 	setAssetFs(config)
 	setupAPM(config)
 	setupAppSec(config)

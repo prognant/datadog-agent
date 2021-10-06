@@ -368,19 +368,19 @@ func StartAgent() error {
 	// Injects overrides
 	resolvers := make(map[string]forwarder.DomainResolver)
 	for d, k := range keysPerDomain {
-		r := forwarder.DomainResolver{
-			BaseDomain: d,
-			ApiKeys:    k,
-			Overrides:  make(map[string]string),
-		}
 		if config.Datadog.IsSet("metrics_dd_url") &&
 			config.Datadog.GetString("metrics_dd_url") != "" &&
 			config.GetMainInfraEndpoint() == d {
-			r.Overrides["/api/beta/sketches"] = config.Datadog.GetString("metrics_dd_url")
-			r.Overrides["/api/v2/series"] = config.Datadog.GetString("metrics_dd_url")
-			r.Overrides["/api/v1/series"] = config.Datadog.GetString("metrics_dd_url")
+			overrides := map[string]string{
+				"sketches_v2": config.Datadog.GetString("metrics_dd_url"),
+				"series_v1":   config.Datadog.GetString("metrics_dd_url"),
+				"series_v2":   config.Datadog.GetString("metrics_dd_url"),
+			}
+			resolvers[d] = forwarder.NewMultiDomainFormarder(d, k, overrides)
+
+		} else {
+			resolvers[d] = forwarder.NewSingleDomainResolver(d, k)
 		}
-		resolvers[d] = r
 	}
 
 	// Enable core agent specific features like persistence-to-disk

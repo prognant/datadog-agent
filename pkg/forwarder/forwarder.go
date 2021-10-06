@@ -98,7 +98,7 @@ type Options struct {
 	DisableAPIKeyChecking          bool
 	EnabledFeatures                Features
 	APIKeyValidationInterval       time.Duration
-	KeysPerDomain                  map[string]DomainResolver
+	DomainResolvers                map[string]DomainResolver
 	ConnectionResetInterval        time.Duration
 	CompletionHandler              transaction.HTTPCompletionHandler
 }
@@ -116,7 +116,7 @@ func ToggleFeature(features, flag Features) Features { return features ^ flag }
 func HasFeature(features, flag Features) bool { return features&flag != 0 }
 
 // NewOptions creates new Options with default values
-func NewOptions(keysPerDomain map[string]DomainResolver) *Options {
+func NewOptions(domainResolvers map[string]DomainResolver) *Options {
 	validationInterval := config.Datadog.GetInt("forwarder_apikey_validation_interval")
 	if validationInterval <= 0 {
 		log.Warnf(
@@ -140,7 +140,7 @@ func NewOptions(keysPerDomain map[string]DomainResolver) *Options {
 		DisableAPIKeyChecking:          false,
 		RetryQueuePayloadsTotalMaxSize: retryQueuePayloadsTotalMaxSize,
 		APIKeyValidationInterval:       time.Duration(validationInterval) * time.Minute,
-		KeysPerDomain:                  keysPerDomain,
+		DomainResolvers:                domainResolvers,
 		ConnectionResetInterval:        time.Duration(config.Datadog.GetInt("forwarder_connection_reset_interval")) * time.Second,
 	}
 
@@ -169,31 +169,16 @@ func (o *Options) setRetryQueuePayloadsTotalMaxSizeFromQueueMax(v int) {
 	o.RetryQueuePayloadsTotalMaxSize = v * maxPayloadSize
 }
 
-type DomainResolver struct {
-	BaseDomain string
-	// Route => overriden hostname map
-	Overrides map[string]string
-	ApiKeys   []string
-}
-
-func (s *DomainResolver) Resolve(route string) string {
-	if d, ok := s.Overrides[route]; ok {
-		return d
-	}
-	return s.BaseDomain
-}
-
 // DefaultForwarder is the default implementation of the Forwarder.
 type DefaultForwarder struct {
 	// NumberOfWorkers Number of concurrent HTTP request made by the DefaultForwarder (default 4).
 	NumberOfWorkers int
 
 	domainForwarders map[string]*domainForwarder
-	// keysPerDomains   map[string][]string
-	keysPerDomains map[string]DomainResolver
-	healthChecker  *forwarderHealth
-	internalState  uint32
-	m              sync.Mutex // To control Start/Stop races
+	domainResolvers  map[string]DomainResolver
+	healthChecker    *forwarderHealth
+	internalState    uint32
+	m                sync.Mutex // To control Start/Stop races
 
 	completionHandler transaction.HTTPCompletionHandler
 }
@@ -203,10 +188,10 @@ func NewDefaultForwarder(options *Options) *DefaultForwarder {
 	f := &DefaultForwarder{
 		NumberOfWorkers:  options.NumberOfWorkers,
 		domainForwarders: map[string]*domainForwarder{},
-		keysPerDomains:   map[string]DomainResolver{},
+		domainResolvers:  map[string]DomainResolver{},
 		internalState:    Stopped,
 		healthChecker: &forwarderHealth{
-			keysPerDomains:        options.KeysPerDomain,
+			domainResolvers:       options.DomainResolvers,
 			disableAPIKeyChecking: options.DisableAPIKeyChecking,
 			validationInterval:    options.APIKeyValidationInterval,
 		},
@@ -245,10 +230,10 @@ func NewDefaultForwarder(options *Options) *DefaultForwarder {
 	domainForwarderSort := transaction.SortByCreatedTimeAndPriority{HighPriorityFirst: true}
 	transactionContainerSort := transaction.SortByCreatedTimeAndPriority{HighPriorityFirst: false}
 
-	for domain, resolver := range options.KeysPerDomain {
+	for domain, resolver := range options.DomainResolvers {
 		domain, _ := config.AddAgentVersionToDomain(domain, "app")
-		resolver.BaseDomain = domain
-		if resolver.ApiKeys == nil || len(resolver.ApiKeys) == 0 {
+		resolver.SetBaseDomain(domain)
+		if resolver.GetApiKeys() == nil || len(resolver.GetApiKeys()) == 0 {
 			log.Errorf("No API keys for domain '%s', dropping domain ", domain)
 		} else {
 			var domainFolderPath string
@@ -267,8 +252,8 @@ func NewDefaultForwarder(options *Options) *DefaultForwarder {
 				storageMaxSize,
 				transactionContainerSort,
 				domain,
-				resolver.ApiKeys)
-			f.keysPerDomains[domain] = resolver
+				resolver.GetApiKeys())
+			f.domainResolvers[domain] = resolver
 			fwd := newDomainForwarder(
 				domain,
 				transactionContainer,
@@ -276,7 +261,8 @@ func NewDefaultForwarder(options *Options) *DefaultForwarder {
 				options.ConnectionResetInterval,
 				domainForwarderSort)
 			f.domainForwarders[domain] = fwd
-			for _, v := range resolver.Overrides {
+			// Register all alternate domains for each forwarder
+			for _, v := range resolver.GetAlternateDomains() {
 				f.domainForwarders[v] = fwd
 			}
 		}
@@ -315,10 +301,10 @@ func (f *DefaultForwarder) Start() error {
 	}
 
 	// log endpoints configuration
-	endpointLogs := make([]string, 0, len(f.keysPerDomains))
-	for domain, apiKeys := range f.keysPerDomains {
+	endpointLogs := make([]string, 0, len(f.domainResolvers))
+	for domain, dr := range f.domainResolvers {
 		endpointLogs = append(endpointLogs, fmt.Sprintf("\"%s\" (%v api key(s))",
-			domain, len(apiKeys.ApiKeys)))
+			domain, len(dr.GetApiKeys())))
 	}
 	log.Infof("Forwarder started, sending to %v endpoint(s) with %v worker(s) each: %s",
 		len(endpointLogs), f.NumberOfWorkers, strings.Join(endpointLogs, " ; "))
@@ -391,14 +377,14 @@ func (f *DefaultForwarder) createHTTPTransactions(endpoint transaction.Endpoint,
 }
 
 func (f *DefaultForwarder) createAdvancedHTTPTransactions(endpoint transaction.Endpoint, payloads Payloads, apiKeyInQueryString bool, extra http.Header, priority transaction.Priority, storableOnDisk bool) []*transaction.HTTPTransaction {
-	transactions := make([]*transaction.HTTPTransaction, 0, len(payloads)*len(f.keysPerDomains))
+	transactions := make([]*transaction.HTTPTransaction, 0, len(payloads)*len(f.domainForwarders))
 	allowArbitraryTags := config.Datadog.GetBool("allow_arbitrary_tags")
 
 	for _, payload := range payloads {
-		for domain, dr := range f.keysPerDomains {
-			for _, apiKey := range dr.ApiKeys {
+		for domain, dr := range f.domainResolvers {
+			for _, apiKey := range dr.GetApiKeys() {
 				t := transaction.NewHTTPTransaction()
-				t.Domain = dr.Resolve(endpoint.Route)
+				t.Domain = dr.Resolve(endpoint)
 				t.Endpoint = endpoint
 				if apiKeyInQueryString {
 					t.Endpoint.Route = fmt.Sprintf("%s?api_key=%s", endpoint.Route, apiKey)
