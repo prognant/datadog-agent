@@ -7,10 +7,15 @@ package forwarder
 
 import "github.com/DataDog/datadog-agent/pkg/forwarder/transaction"
 
+type DestinationType int
+
+const (
+	Datadog DestinationType = iota
+	Vector
+)
+
 type DomainResolver interface {
-	// Maybe allow a API key override Resolve(route) (string, string) ?
-	// Or even return (host, api key)
-	Resolve(endpoint transaction.Endpoint) string
+	Resolve(endpoint transaction.Endpoint) (string, DestinationType)
 	GetApiKeys() []string
 	GetBaseDomain() string
 	GetAlternateDomains() []string
@@ -23,15 +28,23 @@ type SingleDomainResolver struct {
 	apiKeys []string
 }
 
-func NewSingleDomainResolver(domain string, apiKeys []string) DomainResolver {
+func NewSingleDomainResolver(domain string, apiKeys []string) *SingleDomainResolver {
 	return &SingleDomainResolver{
 		domain,
 		apiKeys,
 	}
 }
 
-func (r *SingleDomainResolver) Resolve(endpoint transaction.Endpoint) string {
-	return r.domain
+func NewSingleDomainResolvers(keysPerDomain map[string][]string) map[string]DomainResolver {
+	resolvers := make(map[string]DomainResolver)
+	for domain, keys := range keysPerDomain {
+		resolvers[domain] = NewSingleDomainResolver(domain, keys)
+	}
+	return resolvers
+}
+
+func (r *SingleDomainResolver) Resolve(endpoint transaction.Endpoint) (string, DestinationType) {
+	return r.domain, Datadog
 }
 
 func (r *SingleDomainResolver) GetBaseDomain() string {
@@ -50,19 +63,24 @@ func (r *SingleDomainResolver) GetAlternateDomains() []string {
 	return []string{}
 }
 
+type Destination struct {
+	domain string
+	dType  DestinationType
+}
+
 // MultiDomainResolver holds a default value and can provide alternate domain for some route
 type MultiDomainResolver struct {
 	baseDomain string
 	apiKeys    []string
-	// Route => overriden hostname map
-	overrides map[string]string
+	// endpoint name => overriden hostname map
+	overrides map[string]Destination
 }
 
-func NewMultiDomainFormarder(baseDomain string, apiKeys []string, overrides map[string]string) DomainResolver {
+func NewMultiDomainResolver(baseDomain string, apiKeys []string) *MultiDomainResolver {
 	return &MultiDomainResolver{
 		baseDomain,
 		apiKeys,
-		overrides,
+		make(map[string]Destination),
 	}
 }
 
@@ -70,11 +88,11 @@ func (r *MultiDomainResolver) GetApiKeys() []string {
 	return r.apiKeys
 }
 
-func (s *MultiDomainResolver) Resolve(endpoint transaction.Endpoint) string {
+func (s *MultiDomainResolver) Resolve(endpoint transaction.Endpoint) (string, DestinationType) {
 	if d, ok := s.overrides[endpoint.Name]; ok {
-		return d
+		return d.domain, d.dType
 	}
-	return s.baseDomain
+	return s.baseDomain, Datadog
 }
 
 func (r *MultiDomainResolver) GetBaseDomain() string {
@@ -87,8 +105,25 @@ func (r *MultiDomainResolver) SetBaseDomain(domain string) {
 
 func (r *MultiDomainResolver) GetAlternateDomains() []string {
 	domains := make([]string, 0, len(r.overrides))
-	for _, domain := range r.overrides {
-		domains = append(domains, domain)
+	for _, dest := range r.overrides {
+		domains = append(domains, dest.domain)
 	}
 	return domains
+}
+
+func NewDomainResolverWithMetricToVector(mainEndpoint string, apiKeys []string, vectorEndpoint string) *MultiDomainResolver {
+	dest := Destination{
+		vectorEndpoint,
+		Vector,
+	}
+	overrides := map[string]Destination{
+		v1SeriesEndpoint.Name:     dest,
+		seriesEndpoint.Name:       dest,
+		sketchSeriesEndpoint.Name: dest,
+	}
+	return &MultiDomainResolver{
+		mainEndpoint,
+		apiKeys,
+		overrides,
+	}
 }

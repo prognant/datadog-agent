@@ -175,7 +175,6 @@ func InitConfig(config Config) {
 	// Don't set a default on 'site' to allow detecting with viper whether it's set in config
 	config.BindEnv("site")
 	config.BindEnv("dd_url")
-	config.BindEnv("metrics_dd_url")
 	config.BindEnvAndSetDefault("app_key", "")
 	config.BindEnvAndSetDefault("cloud_provider_metadata", []string{"aws", "gcp", "azure", "alibaba"})
 	config.SetDefault("proxy", nil)
@@ -1521,4 +1520,19 @@ func GetConfiguredTags(includeDogstatsd bool) []string {
 	combined = append(combined, dsdTags...)
 
 	return combined
+}
+
+// GetVectorURL returns the URL under the 'vector.' prefix for the given datatype
+func GetVectorURL(datatype string) (string, bool, error) {
+	if Datadog.GetBool("vector."+datatype+".enabled") && Datadog.IsSet("vector."+datatype+".enabled") {
+		vectorUrl := Datadog.GetString("vector." + datatype + ".url")
+		if vectorUrl != "" {
+			_, err := url.Parse(vectorUrl)
+			if err != nil {
+				return "", false, fmt.Errorf("could not parse vector %s endpoint: %s", datatype, err)
+			}
+			return vectorUrl, true, nil
+		}
+	}
+	return "", false, nil
 }

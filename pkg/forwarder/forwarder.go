@@ -384,7 +384,7 @@ func (f *DefaultForwarder) createAdvancedHTTPTransactions(endpoint transaction.E
 		for domain, dr := range f.domainResolvers {
 			for _, apiKey := range dr.GetApiKeys() {
 				t := transaction.NewHTTPTransaction()
-				t.Domain = dr.Resolve(endpoint)
+				t.Domain, _ = dr.Resolve(endpoint)
 				t.Endpoint = endpoint
 				if apiKeyInQueryString {
 					t.Endpoint.Route = fmt.Sprintf("%s?api_key=%s", endpoint.Route, apiKey)
