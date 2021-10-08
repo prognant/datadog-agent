@@ -233,7 +233,7 @@ func NewDefaultForwarder(options *Options) *DefaultForwarder {
 	for domain, resolver := range options.DomainResolvers {
 		domain, _ := config.AddAgentVersionToDomain(domain, "app")
 		resolver.SetBaseDomain(domain)
-		if resolver.GetApiKeys() == nil || len(resolver.GetApiKeys()) == 0 {
+		if resolver.GetAPIKeys() == nil || len(resolver.GetAPIKeys()) == 0 {
 			log.Errorf("No API keys for domain '%s', dropping domain ", domain)
 		} else {
 			var domainFolderPath string
@@ -252,7 +252,7 @@ func NewDefaultForwarder(options *Options) *DefaultForwarder {
 				storageMaxSize,
 				transactionContainerSort,
 				domain,
-				resolver.GetApiKeys())
+				resolver.GetAPIKeys())
 			f.domainResolvers[domain] = resolver
 			fwd := newDomainForwarder(
 				domain,
@@ -304,7 +304,7 @@ func (f *DefaultForwarder) Start() error {
 	endpointLogs := make([]string, 0, len(f.domainResolvers))
 	for domain, dr := range f.domainResolvers {
 		endpointLogs = append(endpointLogs, fmt.Sprintf("\"%s\" (%v api key(s))",
-			domain, len(dr.GetApiKeys())))
+			domain, len(dr.GetAPIKeys())))
 	}
 	log.Infof("Forwarder started, sending to %v endpoint(s) with %v worker(s) each: %s",
 		len(endpointLogs), f.NumberOfWorkers, strings.Join(endpointLogs, " ; "))
@@ -382,7 +382,7 @@ func (f *DefaultForwarder) createAdvancedHTTPTransactions(endpoint transaction.E
 
 	for _, payload := range payloads {
 		for domain, dr := range f.domainResolvers {
-			for _, apiKey := range dr.GetApiKeys() {
+			for _, apiKey := range dr.GetAPIKeys() {
 				t := transaction.NewHTTPTransaction()
 				t.Domain, _ = dr.Resolve(endpoint)
 				t.Endpoint = endpoint

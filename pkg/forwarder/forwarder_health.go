@@ -70,7 +70,7 @@ func (fh *forwarderHealth) init() {
 	// by the total number of api keys to obtain the max duration for each key
 	apiKeyCount := 0
 	for _, dr := range fh.domainResolvers {
-		apiKeyCount += len(dr.GetApiKeys())
+		apiKeyCount += len(dr.GetAPIKeys())
 	}
 
 	fh.timeout = validateAPIKeyTimeout
@@ -138,7 +138,7 @@ func (fh *forwarderHealth) computeDomainsURL() {
 		} else {
 			apiDomain = domain
 		}
-		fh.keysPerAPIEndpoint[apiDomain] = append(fh.keysPerAPIEndpoint[apiDomain], dr.GetApiKeys()...)
+		fh.keysPerAPIEndpoint[apiDomain] = append(fh.keysPerAPIEndpoint[apiDomain], dr.GetAPIKeys()...)
 	}
 }
 

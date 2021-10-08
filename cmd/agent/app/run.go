@@ -365,16 +365,16 @@ func StartAgent() error {
 		log.Error("Misconfiguration of agent endpoints: ", err)
 	}
 	resolvers := forwarder.NewSingleDomainResolvers(keysPerDomain)
-	vectorMetricsUrl, vectorEnabled, err := config.GetVectorURL("metrics")
+	vectorMetricsURL, vectorEnabled, err := config.GetVectorURL("metrics")
 	if err != nil {
 		log.Error("Misconfiguration of agent vector endpoint for metrics: ", err)
 	}
 	if r, ok := resolvers[config.GetMainInfraEndpoint()]; ok && vectorEnabled {
-		log.Debugf("Configuring forwarder to send metrics to vector: %s", vectorMetricsUrl)
+		log.Debugf("Configuring forwarder to send metrics to vector: %s", vectorMetricsURL)
 		resolvers[config.GetMainInfraEndpoint()] = forwarder.NewDomainResolverWithMetricToVector(
 			r.GetBaseDomain(),
-			r.GetApiKeys(),
-			vectorMetricsUrl,
+			r.GetAPIKeys(),
+			vectorMetricsURL,
 		)
 	}
 

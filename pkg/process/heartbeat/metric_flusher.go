@@ -45,7 +45,7 @@ func newAPIFlusher(opts Options, fallback flusher) (flusher, error) {
 	}
 
 	// Instantiate forwarder responsible for sending hearbeat metrics to the API
-	fwdOpts := forwarder.NewOptions(keysPerDomain)
+	fwdOpts := forwarder.NewOptions(forwarder.NewSingleDomainResolvers(keysPerDomain))
 	fwdOpts.DisableAPIKeyChecking = true
 	fwdOpts.CompletionHandler = apiWatcher.handler()
 	heartbeatForwarder := forwarder.NewDefaultForwarder(fwdOpts)

@@ -8,8 +8,6 @@ package config
 import (
 	"fmt"
 	"net/url"
-
-	"github.com/DataDog/datadog-agent/pkg/forwarder"
 )
 
 // Endpoint is a single endpoint where process data will be submitted.
@@ -19,20 +17,15 @@ type Endpoint struct {
 }
 
 // KeysPerDomains turns a list of endpoints into a map of URL -> []APIKey
-func KeysPerDomains(endpoints []Endpoint) map[string]forwarder.DomainResolver {
+func KeysPerDomains(endpoints []Endpoint) map[string][]string {
 	keysPerDomains := make(map[string][]string)
 
 	for _, ep := range endpoints {
 		domain := removePathIfPresent(ep.Endpoint)
 		keysPerDomains[domain] = append(keysPerDomains[domain], ep.APIKey)
 	}
-	domainResolvers := make(map[string]forwarder.DomainResolver)
 
-	for d, k := range keysPerDomains {
-		domainResolvers[d] = forwarder.NewSingleDomainResolver(d, k)
-	}
-
-	return domainResolvers
+	return keysPerDomains
 }
 
 // removePathIfPresent removes the path component from the URL if it is present

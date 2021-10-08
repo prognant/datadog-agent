@@ -1525,13 +1525,13 @@ func GetConfiguredTags(includeDogstatsd bool) []string {
 // GetVectorURL returns the URL under the 'vector.' prefix for the given datatype
 func GetVectorURL(datatype string) (string, bool, error) {
 	if Datadog.GetBool("vector."+datatype+".enabled") && Datadog.IsSet("vector."+datatype+".enabled") {
-		vectorUrl := Datadog.GetString("vector." + datatype + ".url")
-		if vectorUrl != "" {
-			_, err := url.Parse(vectorUrl)
+		vectorURL := Datadog.GetString("vector." + datatype + ".url")
+		if vectorURL != "" {
+			_, err := url.Parse(vectorURL)
 			if err != nil {
 				return "", false, fmt.Errorf("could not parse vector %s endpoint: %s", datatype, err)
 			}
-			return vectorUrl, true, nil
+			return vectorURL, true, nil
 		}
 	}
 	return "", false, nil
