@@ -14,11 +14,11 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/autodiscovery/integration"
 	"github.com/DataDog/datadog-agent/pkg/collector/check/defaults"
-	"github.com/DataDog/datadog-agent/pkg/config"
+	"github.com/DataDog/datadog-agent/pkg/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/common"
-	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/metadata"
+	coreconfig "github.com/DataDog/datadog-agent/pkg/config"
 )
 
 // Using high oid batch size might lead to snmp calls timing out.
@@ -57,11 +57,14 @@ type InitConfig struct {
 	OidBatchSize          Number           `yaml:"oid_batch_size"`
 	BulkMaxRepetitions    Number           `yaml:"bulk_max_repetitions"`
 	CollectDeviceMetadata Boolean          `yaml:"collect_device_metadata"`
+	UseDeviceIDAsHostname Boolean          `yaml:"use_device_id_as_hostname"`
 	MinCollectionInterval int              `yaml:"min_collection_interval"`
+	Namespace             string           `yaml:"namespace"`
 }
 
 // InstanceConfig is used to deserialize integration instance config
 type InstanceConfig struct {
+	Name                  string            `yaml:"name"`
 	IPAddress             string            `yaml:"ip_address"`
 	Port                  Number            `yaml:"port"`
 	CommunityString       string            `yaml:"community_string"`
@@ -79,6 +82,7 @@ type InstanceConfig struct {
 	Profile               string            `yaml:"profile"`
 	UseGlobalMetrics      bool              `yaml:"use_global_metrics"`
 	CollectDeviceMetadata *Boolean          `yaml:"collect_device_metadata"`
+	UseDeviceIDAsHostname *Boolean          `yaml:"use_device_id_as_hostname"`
 
 	// ExtraTags is a workaround to pass tags from snmp listener to snmp integration via AD template
 	// (see cmd/agent/dist/conf.d/snmp.d/auto_conf.yaml) that only works with strings.
@@ -112,6 +116,7 @@ type InstanceConfig struct {
 
 // CheckConfig holds config needed for an integration instance to run
 type CheckConfig struct {
+	Name                  string
 	IPAddress             string
 	Port                  uint16
 	CommunityString       string
@@ -126,6 +131,7 @@ type CheckConfig struct {
 	ContextName           string
 	OidConfig             OidConfig
 	Metrics               []MetricsConfig
+	Metadata              MetadataConfig
 	MetricTags            []MetricTagConfig
 	OidBatchSize          int
 	BulkMaxRepetitions    uint32
@@ -136,6 +142,7 @@ type CheckConfig struct {
 	ExtraTags             []string
 	InstanceTags          []string
 	CollectDeviceMetadata bool
+	UseDeviceIDAsHostname bool
 	DeviceID              string
 	DeviceIDTags          []string
 	ResolvedSubnetName    string
@@ -162,10 +169,13 @@ func (c *CheckConfig) RefreshWithProfile(profile string) error {
 	c.ProfileDef = &definition
 	c.Profile = profile
 
+	c.Metadata = updateMetadataDefinitionWithLegacyFallback(definition.Metadata)
 	c.Metrics = append(c.Metrics, definition.Metrics...)
 	c.MetricTags = append(c.MetricTags, definition.MetricTags...)
-	c.OidConfig.addScalarOids(parseScalarOids(definition.Metrics, definition.MetricTags))
-	c.OidConfig.addColumnOids(parseColumnOids(definition.Metrics))
+
+	c.OidConfig.clean()
+	c.OidConfig.addScalarOids(c.parseScalarOids(c.Metrics, c.MetricTags, c.Metadata))
+	c.OidConfig.addColumnOids(c.parseColumnOids(c.Metrics, c.Metadata))
 
 	if definition.Device.Vendor != "" {
 		tags = append(tags, "device_vendor:"+definition.Device.Vendor)
@@ -176,12 +186,12 @@ func (c *CheckConfig) RefreshWithProfile(profile string) error {
 
 // UpdateDeviceIDAndTags updates DeviceID and DeviceIDTags
 func (c *CheckConfig) UpdateDeviceIDAndTags() {
-	c.DeviceID, c.DeviceIDTags = buildDeviceID(c.getDeviceIDTags())
+	c.DeviceIDTags = util.SortUniqInPlace(c.getDeviceIDTags())
+	c.DeviceID = c.Namespace + ":" + c.IPAddress
 }
 
 func (c *CheckConfig) addUptimeMetric() {
 	c.Metrics = append(c.Metrics, uptimeMetricConfig)
-	c.OidConfig.addScalarOids([]string{uptimeMetricConfig.Symbol.OID})
 }
 
 // GetStaticTags return static tags built from configuration
@@ -254,6 +264,7 @@ func NewCheckConfig(rawInstance integration.Data, rawInitConfig integration.Data
 
 	c := &CheckConfig{}
 
+	c.Name = instance.Name
 	c.SnmpVersion = instance.SnmpVersion
 	c.IPAddress = instance.IPAddress
 	c.Port = uint16(instance.Port)
@@ -277,6 +288,12 @@ func NewCheckConfig(rawInstance integration.Data, rawInitConfig integration.Data
 		c.CollectDeviceMetadata = bool(*instance.CollectDeviceMetadata)
 	} else {
 		c.CollectDeviceMetadata = bool(initConfig.CollectDeviceMetadata)
+	}
+
+	if instance.UseDeviceIDAsHostname != nil {
+		c.UseDeviceIDAsHostname = bool(*instance.UseDeviceIDAsHostname)
+	} else {
+		c.UseDeviceIDAsHostname = bool(initConfig.UseDeviceIDAsHostname)
 	}
 
 	if instance.ExtraTags != "" {
@@ -375,12 +392,23 @@ func NewCheckConfig(rawInstance integration.Data, rawInitConfig integration.Data
 
 	if instance.Namespace != "" {
 		c.Namespace = instance.Namespace
+	} else if initConfig.Namespace != "" {
+		c.Namespace = initConfig.Namespace
 	} else {
-		c.Namespace = config.Datadog.GetString("network_devices.namespace")
+		c.Namespace = coreconfig.Datadog.GetString("network_devices.namespace")
 	}
+
 	if c.Namespace == "" {
-		// Can only happen if network_devices.namespace config is set to empty string in `datadog.yaml`
+		// Can only happen if snmp_listener.namespace config is set to empty string in `datadog.yaml`
 		return nil, fmt.Errorf("namespace cannot be empty")
+	}
+
+	// profile configs
+	profile := instance.Profile
+	if profile != "" || len(c.Metrics) > 0 {
+		c.AutodetectProfile = false
+	} else {
+		c.AutodetectProfile = true
 	}
 
 	// metrics Configs
@@ -392,13 +420,11 @@ func NewCheckConfig(rawInstance integration.Data, rawInitConfig integration.Data
 	c.InstanceTags = instance.Tags
 	c.MetricTags = instance.MetricTags
 
-	c.OidConfig.addScalarOids(parseScalarOids(c.Metrics, c.MetricTags))
-	c.OidConfig.addColumnOids(parseColumnOids(c.Metrics))
+	c.addUptimeMetric()
 
-	if c.CollectDeviceMetadata {
-		c.OidConfig.addScalarOids(metadata.ScalarOIDs)
-		c.OidConfig.addColumnOids(metadata.ColumnOIDs)
-	}
+	c.Metadata = updateMetadataDefinitionWithLegacyFallback(nil)
+	c.OidConfig.addScalarOids(c.parseScalarOids(c.Metrics, c.MetricTags, c.Metadata))
+	c.OidConfig.addColumnOids(c.parseColumnOids(c.Metrics, c.Metadata))
 
 	// Profile Configs
 	var profiles profileDefinitionMap
@@ -423,18 +449,11 @@ func NewCheckConfig(rawInstance integration.Data, rawInitConfig integration.Data
 	}
 
 	c.Profiles = profiles
-	profile := instance.Profile
 
 	errors := validateEnrichMetrics(c.Metrics)
 	errors = append(errors, ValidateEnrichMetricTags(c.MetricTags)...)
 	if len(errors) > 0 {
 		return nil, fmt.Errorf("validation errors: %s", strings.Join(errors, "\n"))
-	}
-
-	if profile != "" || len(c.Metrics) > 0 {
-		c.AutodetectProfile = false
-	} else {
-		c.AutodetectProfile = true
 	}
 
 	if profile != "" {
@@ -447,8 +466,6 @@ func NewCheckConfig(rawInstance integration.Data, rawInitConfig integration.Data
 	c.UpdateDeviceIDAndTags()
 
 	c.ResolvedSubnetName = c.getResolvedSubnetName()
-
-	c.addUptimeMetric()
 	return c, nil
 }
 
@@ -525,6 +542,11 @@ func (c *CheckConfig) Copy() *CheckConfig {
 	for _, metric := range c.Metrics {
 		newConfig.Metrics = append(newConfig.Metrics, metric)
 	}
+
+	// Metadata: shallow copy is enough since metadata is not modified.
+	// However, it might be fully replaced, see CheckConfig.RefreshWithProfile
+	newConfig.Metadata = c.Metadata
+
 	newConfig.MetricTags = make([]MetricTagConfig, 0, len(c.MetricTags))
 	for _, metricTag := range c.MetricTags {
 		newConfig.MetricTags = append(newConfig.MetricTags, metricTag)
@@ -538,6 +560,7 @@ func (c *CheckConfig) Copy() *CheckConfig {
 	newConfig.ExtraTags = common.CopyStrings(c.ExtraTags)
 	newConfig.InstanceTags = common.CopyStrings(c.InstanceTags)
 	newConfig.CollectDeviceMetadata = c.CollectDeviceMetadata
+	newConfig.UseDeviceIDAsHostname = c.UseDeviceIDAsHostname
 	newConfig.DeviceID = c.DeviceID
 
 	newConfig.DeviceIDTags = common.CopyStrings(c.DeviceIDTags)
@@ -562,30 +585,56 @@ func (c *CheckConfig) IsDiscovery() bool {
 	return c.Network != ""
 }
 
-func parseScalarOids(metrics []MetricsConfig, metricTags []MetricTagConfig) []string {
+func (c *CheckConfig) parseScalarOids(metrics []MetricsConfig, metricTags []MetricTagConfig, metadataConfigs MetadataConfig) []string {
 	var oids []string
 	for _, metric := range metrics {
-		if metric.Symbol.OID != "" {
-			oids = append(oids, metric.Symbol.OID)
-		}
+		oids = append(oids, metric.Symbol.OID)
 	}
 	for _, metricTag := range metricTags {
-		if metricTag.OID != "" {
-			oids = append(oids, metricTag.OID)
+		oids = append(oids, metricTag.OID)
+	}
+	if c.CollectDeviceMetadata {
+		for resource, metadataConfig := range metadataConfigs {
+			if !IsMetadataResourceWithScalarOids(resource) {
+				continue
+			}
+			for _, field := range metadataConfig.Fields {
+				oids = append(oids, field.Symbol.OID)
+				for _, symbol := range field.Symbols {
+					oids = append(oids, symbol.OID)
+				}
+			}
+			// we don't support tags for now for resource (e.g. device) based on scalar OIDs
+			// profile root level `metric_tags` (tags used for both metadata, metrics, service checks)
+			// can be used instead
 		}
 	}
 	return oids
 }
 
-func parseColumnOids(metrics []MetricsConfig) []string {
+func (c *CheckConfig) parseColumnOids(metrics []MetricsConfig, metadataConfigs MetadataConfig) []string {
 	var oids []string
 	for _, metric := range metrics {
 		for _, symbol := range metric.Symbols {
 			oids = append(oids, symbol.OID)
 		}
 		for _, metricTag := range metric.MetricTags {
-			if metricTag.Column.OID != "" {
-				oids = append(oids, metricTag.Column.OID)
+			oids = append(oids, metricTag.Column.OID)
+		}
+	}
+	if c.CollectDeviceMetadata {
+		for resource, metadataConfig := range metadataConfigs {
+			if IsMetadataResourceWithScalarOids(resource) {
+				continue
+			}
+			for _, field := range metadataConfig.Fields {
+				oids = append(oids, field.Symbol.OID)
+				for _, symbol := range field.Symbols {
+					oids = append(oids, symbol.OID)
+				}
+			}
+			for _, tagConfig := range metadataConfig.IDTags {
+				oids = append(oids, tagConfig.Column.OID)
 			}
 		}
 	}

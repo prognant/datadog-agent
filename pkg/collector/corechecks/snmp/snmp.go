@@ -12,13 +12,10 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/checkconfig"
+	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/common"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/devicecheck"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/discovery"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/report"
-)
-
-const (
-	snmpCheckName = "snmp"
 )
 
 var timeNow = time.Now
@@ -54,7 +51,7 @@ func (c *Check) Run() error {
 
 		for i := range discoveredDevices {
 			deviceCk := discoveredDevices[i]
-			deviceCk.SetSender(report.NewMetricSender(sender))
+			deviceCk.SetSender(report.NewMetricSender(sender, deviceCk.GetDeviceHostname()))
 			jobs <- deviceCk
 		}
 		close(jobs)
@@ -64,7 +61,7 @@ func (c *Check) Run() error {
 		tags = append(tags, c.config.GetNetworkTags()...)
 		sender.Gauge("snmp.discovered_devices_count", float64(len(discoveredDevices)), "", tags)
 	} else {
-		c.singleDeviceCk.SetSender(report.NewMetricSender(sender))
+		c.singleDeviceCk.SetSender(report.NewMetricSender(sender, c.singleDeviceCk.GetDeviceHostname()))
 		checkErr = c.runCheckDevice(c.singleDeviceCk)
 	}
 
@@ -96,19 +93,31 @@ func (c *Check) runCheckDevice(deviceCk *devicecheck.DeviceCheck) error {
 
 // Configure configures the snmp checks
 func (c *Check) Configure(rawInstance integration.Data, rawInitConfig integration.Data, source string) error {
-	// Must be called before c.CommonConfigure
-	c.BuildID(rawInstance, rawInitConfig)
-
-	err := c.CommonConfigure(rawInstance, source)
-	if err != nil {
-		return fmt.Errorf("common configure failed: %s", err)
-	}
+	var err error
 
 	c.config, err = checkconfig.NewCheckConfig(rawInstance, rawInitConfig)
 	if err != nil {
 		return fmt.Errorf("build config failed: %s", err)
 	}
 	log.Debugf("SNMP configuration: %s", c.config.ToString())
+
+	if c.config.Name == "" {
+		// Set 'name' field of the instance if not already defined in rawInstance config.
+		// The name/device_id will be used by Check.BuildID for building the check id.
+		// Example of check id: `snmp:<DEVICE_ID>:a3ec59dfb03e4457`
+		setNameErr := rawInstance.SetNameForInstance(c.config.DeviceID)
+		if setNameErr != nil {
+			log.Debugf("error setting device_id as name: %s", setNameErr)
+		}
+	}
+
+	// Must be called before c.CommonConfigure
+	c.BuildID(rawInstance, rawInitConfig)
+
+	err = c.CommonConfigure(rawInstance, source)
+	if err != nil {
+		return fmt.Errorf("common configure failed: %s", err)
+	}
 
 	if c.config.IsDiscovery() {
 		c.discovery = discovery.NewDiscovery(c.config)
@@ -134,10 +143,10 @@ func (c *Check) Interval() time.Duration {
 
 func snmpFactory() check.Check {
 	return &Check{
-		CheckBase: core.NewCheckBase(snmpCheckName),
+		CheckBase: core.NewCheckBase(common.SnmpIntegrationName),
 	}
 }
 
 func init() {
-	core.RegisterCheck(snmpCheckName, snmpFactory)
+	core.RegisterCheck(common.SnmpIntegrationName, snmpFactory)
 }

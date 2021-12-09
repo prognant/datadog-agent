@@ -8,8 +8,8 @@ import (
 
 // ResultValue represent a snmp value
 type ResultValue struct {
-	SubmissionType string      // used when sending the metric
-	Value          interface{} // might be a `string` or `float64` type
+	SubmissionType string      `json:"sub_type,omitempty"` // used when sending the metric
+	Value          interface{} `json:"value"`              // might be a `string` or `float64` type
 }
 
 // ToFloat64 converts value to float64
@@ -46,6 +46,9 @@ func (sv ResultValue) ExtractStringValue(extractValuePattern *regexp.Regexp) (Re
 		matches := extractValuePattern.FindStringSubmatch(srcValue)
 		if matches == nil {
 			return ResultValue{}, fmt.Errorf("extract value extractValuePattern does not match (extractValuePattern=%v, srcValue=%v)", extractValuePattern, srcValue)
+		}
+		if len(matches) < 2 {
+			return ResultValue{}, fmt.Errorf("extract value pattern des not contain any matching group (extractValuePattern=%v, srcValue=%v)", extractValuePattern, srcValue)
 		}
 		matchedValue := matches[1] // use first matching group
 		return ResultValue{SubmissionType: sv.SubmissionType, Value: matchedValue}, nil

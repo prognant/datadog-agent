@@ -180,8 +180,8 @@ bulk_max_repetitions: 20
 		},
 		{Symbol: SymbolConfig{OID: "1.2.3.4", Name: "aGlobalMetric"}},
 	}
-	metrics = append(metrics, mockProfilesDefinitions()["f5-big-ip"].Metrics...)
 	metrics = append(metrics, MetricsConfig{Symbol: SymbolConfig{OID: "1.3.6.1.2.1.1.3.0", Name: "sysUpTimeInstance"}})
+	metrics = append(metrics, mockProfilesDefinitions()["f5-big-ip"].Metrics...)
 
 	metricsTags := []MetricTagConfig{
 		{Tag: "my_symbol", OID: "1.2.3", Name: "mySymbol"},
@@ -212,7 +212,7 @@ bulk_max_repetitions: 20
 	assert.Equal(t, metrics, config.Metrics)
 	assert.Equal(t, metricsTags, config.MetricTags)
 	assert.Equal(t, 1, len(config.Profiles))
-	assert.Equal(t, "5eb4b5284574c173", config.DeviceID)
+	assert.Equal(t, "default:1.2.3.4", config.DeviceID)
 	assert.Equal(t, []string{"device_namespace:default", "snmp_device:1.2.3.4"}, config.DeviceIDTags)
 	assert.Equal(t, "127.0.0.0/30", config.ResolvedSubnetName)
 	assert.Equal(t, false, config.AutodetectProfile)
@@ -284,10 +284,9 @@ profiles:
 	assert.Nil(t, err)
 	assert.Equal(t, []string{"device_namespace:default", "snmp_device:1.2.3.4"}, config.GetStaticTags())
 	metrics := []MetricsConfig{
+		{Symbol: SymbolConfig{OID: "1.3.6.1.2.1.1.3.0", Name: "sysUpTimeInstance"}},
 		{Symbol: SymbolConfig{OID: "1.4.5", Name: "myMetric"}, ForcedType: "gauge"},
 	}
-	//metrics = append(metrics, mockProfilesDefinitions()["f5-big-ip"].Metrics...)
-	metrics = append(metrics, MetricsConfig{Symbol: SymbolConfig{OID: "1.3.6.1.2.1.1.3.0", Name: "sysUpTimeInstance"}})
 
 	metricsTags := []MetricTagConfig{
 		{Tag: "snmp_host", OID: "1.3.6.1.2.1.1.5.0", Name: "sysName"},
@@ -297,7 +296,7 @@ profiles:
 	assert.Equal(t, metrics, config.Metrics)
 	assert.Equal(t, metricsTags, config.MetricTags)
 	assert.Equal(t, 2, len(config.Profiles))
-	assert.Equal(t, "5eb4b5284574c173", config.DeviceID)
+	assert.Equal(t, "default:1.2.3.4", config.DeviceID)
 	assert.Equal(t, []string{"device_namespace:default", "snmp_device:1.2.3.4"}, config.DeviceIDTags)
 	assert.Equal(t, false, config.AutodetectProfile)
 	assert.Equal(t, 3600, config.DiscoveryInterval)
@@ -874,12 +873,55 @@ func Test_snmpConfig_refreshWithProfile(t *testing.T) {
 		},
 	}
 	profile1 := profileDefinition{
-		Device: deviceMeta{
+		Device: DeviceMeta{
 			Vendor: "a-vendor",
 		},
 		Metrics: metrics,
 		MetricTags: []MetricTagConfig{
 			{Tag: "interface", Column: SymbolConfig{OID: "1.3.6.1.2.1.31.1.1.1.1", Name: "ifName"}},
+		},
+		Metadata: MetadataConfig{
+			"device": {
+				Fields: map[string]MetadataField{
+					"description": {
+						Symbol: SymbolConfig{
+							OID:  "1.3.6.1.2.1.1.99.3.0",
+							Name: "sysDescr",
+						},
+					},
+					"name": {
+						Symbols: []SymbolConfig{
+							{
+								OID:  "1.3.6.1.2.1.1.99.1.0",
+								Name: "symbol1",
+							},
+							{
+								OID:  "1.3.6.1.2.1.1.99.2.0",
+								Name: "symbol2",
+							},
+						},
+					},
+				},
+			},
+			"interface": {
+				Fields: map[string]MetadataField{
+					"oper_status": {
+						Symbol: SymbolConfig{
+							OID:  "1.3.6.1.2.1.2.2.1.99",
+							Name: "someIfSymbol",
+						},
+					},
+				},
+				IDTags: MetricTagConfigList{
+					{
+						Tag: "interface",
+						Column: SymbolConfig{
+							OID:  "1.3.6.1.2.1.31.1.1.1.1",
+							Name: "ifName",
+						},
+					},
+				},
+			},
 		},
 		SysObjectIds: StringArray{"1.3.6.1.4.1.3375.2.1.3.4.*"},
 	}
@@ -913,6 +955,25 @@ func Test_snmpConfig_refreshWithProfile(t *testing.T) {
 		Profiles:              mockProfiles,
 		CollectDeviceMetadata: true,
 	}
+	err = c.RefreshWithProfile("profile1")
+	assert.NoError(t, err)
+	assert.Equal(t, OidConfig{
+		ScalarOids: []string{
+			"1.2.3.4.5",
+			"1.3.6.1.2.1.1.99.1.0",
+			"1.3.6.1.2.1.1.99.2.0",
+			"1.3.6.1.2.1.1.99.3.0",
+		},
+		ColumnOids: []string{
+			"1.2.3.4.6",
+			"1.2.3.4.7",
+			"1.3.6.1.2.1.2.2.1.99",
+			"1.3.6.1.2.1.31.1.1.1.1",
+		},
+	}, c.OidConfig)
+
+	// With metadata disabled
+	c.CollectDeviceMetadata = false
 	err = c.RefreshWithProfile("profile1")
 	assert.NoError(t, err)
 	assert.Equal(t, OidConfig{
@@ -1002,45 +1063,150 @@ collect_device_metadata: true
 func Test_buildConfig_namespace(t *testing.T) {
 	defer coreconfig.Datadog.Set("network_devices.namespace", "default")
 
+	// Should use namespace defined in instance config
 	// language=yaml
 	rawInstanceConfig := []byte(`
 ip_address: 1.2.3.4
 community_string: "abc"
 namespace: my-ns
 `)
-	// language=yaml
 	rawInitConfig := []byte(``)
+
 	conf, err := NewCheckConfig(rawInstanceConfig, rawInitConfig)
 	assert.Nil(t, err)
 	assert.Equal(t, "my-ns", conf.Namespace)
 
+	// Should use namespace defined in datadog.yaml network_devices
 	// language=yaml
 	rawInstanceConfig = []byte(`
 ip_address: 1.2.3.4
 community_string: "abc"
 `)
+	rawInitConfig = []byte(``)
 	conf, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
 	assert.Nil(t, err)
 	assert.Equal(t, "default", conf.Namespace)
 
+	// Should use namespace defined in init config
 	// language=yaml
 	rawInstanceConfig = []byte(`
 ip_address: 1.2.3.4
 community_string: "abc"
 `)
-	coreconfig.Datadog.Set("network_devices.namespace", "ns-from-datadog-conf")
+	rawInitConfig = []byte(`
+namespace: ns-from-datadog-conf`)
 	conf, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
 	assert.Nil(t, err)
 	assert.Equal(t, "ns-from-datadog-conf", conf.Namespace)
+
+	// Should use namespace defined in datadog.yaml network_devices
+	// language=yaml
+	rawInstanceConfig = []byte(`
+ip_address: 1.2.3.4
+community_string: "abc"
+`)
+	rawInitConfig = []byte(``)
+	coreconfig.Datadog.Set("network_devices.namespace", "totoro")
+	conf, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
+	assert.Nil(t, err)
+	assert.Equal(t, "totoro", conf.Namespace)
+
+	// Should use namespace defined in init config
+	// when namespace is empty in instance config
+	// language=yaml
+	rawInstanceConfig = []byte(`
+ip_address: 1.2.3.4
+community_string: "abc"
+namespace: ""
+`)
+	rawInitConfig = []byte(`
+namespace: ponyo`)
+	conf, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
+	assert.Nil(t, err)
+	assert.Equal(t, "ponyo", conf.Namespace)
+
+	// Should use namespace defined in datadog.yaml network_devices
+	// when namespace is empty in init config
+	// language=yaml
+	rawInstanceConfig = []byte(`
+ip_address: 1.2.3.4
+community_string: "abc"
+`)
+	rawInitConfig = []byte(`
+namespace: `)
+	coreconfig.Datadog.Set("network_devices.namespace", "mononoke")
+	conf, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
+	assert.Nil(t, err)
+	assert.Equal(t, "mononoke", conf.Namespace)
+
+	// Should throw error when namespace is empty in datadog.yaml network_devices
+	// language=yaml
+	rawInstanceConfig = []byte(`
+ip_address: 1.2.3.4
+community_string: "abc"
+`)
+	rawInitConfig = []byte(``)
+	coreconfig.Datadog.Set("network_devices.namespace", "")
+	conf, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
+	assert.EqualError(t, err, "namespace cannot be empty")
+}
+
+func Test_buildConfig_UseDeviceIDAsHostname(t *testing.T) {
+	// language=yaml
+	rawInstanceConfig := []byte(`
+ip_address: 1.2.3.4
+community_string: "abc"
+`)
+	// language=yaml
+	rawInitConfig := []byte(`
+oid_batch_size: 10
+`)
+	config, err := NewCheckConfig(rawInstanceConfig, rawInitConfig)
+	assert.Nil(t, err)
+	assert.Equal(t, false, config.UseDeviceIDAsHostname)
 
 	// language=yaml
 	rawInstanceConfig = []byte(`
 ip_address: 1.2.3.4
 community_string: "abc"
 `)
-	coreconfig.Datadog.Set("network_devices.namespace", "")
-	conf, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
-	assert.EqualError(t, err, "namespace cannot be empty")
+	// language=yaml
+	rawInitConfig = []byte(`
+oid_batch_size: 10
+use_device_id_as_hostname: true
+`)
+	config, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
+	assert.Nil(t, err)
+	assert.Equal(t, true, config.UseDeviceIDAsHostname)
+
+	// language=yaml
+	rawInstanceConfig = []byte(`
+ip_address: 1.2.3.4
+community_string: "abc"
+use_device_id_as_hostname: true
+`)
+	// language=yaml
+	rawInitConfig = []byte(`
+oid_batch_size: 10
+`)
+	config, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
+	assert.Nil(t, err)
+	assert.Equal(t, true, config.UseDeviceIDAsHostname)
+
+	// language=yaml
+	rawInstanceConfig = []byte(`
+ip_address: 1.2.3.4
+community_string: "abc"
+use_device_id_as_hostname: false
+`)
+	// language=yaml
+	rawInitConfig = []byte(`
+oid_batch_size: 10
+use_device_id_as_hostname: true
+`)
+	config, err = NewCheckConfig(rawInstanceConfig, rawInitConfig)
+	assert.Nil(t, err)
+	assert.Equal(t, false, config.UseDeviceIDAsHostname)
 }
 
 func Test_buildConfig_minCollectionInterval(t *testing.T) {
@@ -1404,16 +1570,17 @@ func TestCheckConfig_Copy(t *testing.T) {
 		OidBatchSize:       10,
 		BulkMaxRepetitions: 10,
 		Profiles: profileDefinitionMap{"f5-big-ip": profileDefinition{
-			Device: deviceMeta{Vendor: "f5"},
+			Device: DeviceMeta{Vendor: "f5"},
 		}},
 		ProfileTags: []string{"profile_tag:atag"},
 		Profile:     "f5",
 		ProfileDef: &profileDefinition{
-			Device: deviceMeta{Vendor: "f5"},
+			Device: DeviceMeta{Vendor: "f5"},
 		},
 		ExtraTags:             []string{"ExtraTags:tag"},
 		InstanceTags:          []string{"InstanceTags:tag"},
 		CollectDeviceMetadata: true,
+		UseDeviceIDAsHostname: true,
 		DeviceID:              "123",
 		DeviceIDTags:          []string{"DeviceIDTags:tag"},
 		ResolvedSubnetName:    "1.2.3.4/28",
@@ -1451,6 +1618,7 @@ func TestCheckConfig_Copy(t *testing.T) {
 	assertNotSameButEqualElements(t, config.ExtraTags, configCopy.ExtraTags)
 	assertNotSameButEqualElements(t, config.InstanceTags, configCopy.InstanceTags)
 	assert.Equal(t, config.CollectDeviceMetadata, configCopy.CollectDeviceMetadata)
+	assert.Equal(t, config.UseDeviceIDAsHostname, configCopy.UseDeviceIDAsHostname)
 	assert.Equal(t, config.DeviceID, configCopy.DeviceID)
 	assertNotSameButEqualElements(t, config.DeviceIDTags, configCopy.DeviceIDTags)
 	assert.Equal(t, config.ResolvedSubnetName, configCopy.ResolvedSubnetName)

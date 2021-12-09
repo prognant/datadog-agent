@@ -153,6 +153,9 @@ type Config struct {
 
 	// RecordedQueryTypes enables specific DNS query types to be recorded
 	RecordedQueryTypes []string
+
+	// HTTP replace rules
+	HTTPReplaceRules []*ReplaceRule
 }
 
 func join(pieces ...string) string {
@@ -215,6 +218,14 @@ func New() *Config {
 		RecordedQueryTypes: cfg.GetStringSlice(join(netNS, "dns_recorded_query_types")),
 	}
 
+	httpRRKey := join(netNS, "http_replace_rules")
+	rr, err := parseReplaceRules(cfg, httpRRKey)
+	if err != nil {
+		log.Errorf("error parsing %q: %v", httpRRKey, err)
+	} else {
+		c.HTTPReplaceRules = rr
+	}
+
 	if c.OffsetGuessThreshold > maxOffsetThreshold {
 		log.Warn("offset_guess_threshold exceeds maximum of 3000. Setting it to the default of 400")
 		c.OffsetGuessThreshold = defaultOffsetThreshold
@@ -235,6 +246,15 @@ func New() *Config {
 	}
 	if !c.DNSInspection {
 		log.Info("network tracer DNS inspection disabled by configuration")
+	}
+
+	if c.ServiceMonitoringEnabled {
+		cfg.Set(join(netNS, "enable_http_monitoring"), true)
+		c.EnableHTTPMonitoring = true
+		if !cfg.IsSet(join(netNS, "enable_https_monitoring")) {
+			cfg.Set(join(netNS, "enable_https_monitoring"), true)
+			c.EnableHTTPSMonitoring = true
+		}
 	}
 
 	return c

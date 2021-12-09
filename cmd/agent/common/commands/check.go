@@ -33,13 +33,13 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/collector/check"
 	"github.com/DataDog/datadog-agent/pkg/config"
 	"github.com/DataDog/datadog-agent/pkg/epforwarder"
-	"github.com/DataDog/datadog-agent/pkg/flare"
 	"github.com/DataDog/datadog-agent/pkg/logs/message"
 	"github.com/DataDog/datadog-agent/pkg/metadata"
 	"github.com/DataDog/datadog-agent/pkg/serializer"
 	"github.com/DataDog/datadog-agent/pkg/status"
 	"github.com/DataDog/datadog-agent/pkg/util"
 	"github.com/DataDog/datadog-agent/pkg/util/flavor"
+	"github.com/DataDog/datadog-agent/pkg/util/scrubber"
 )
 
 var (
@@ -568,14 +568,11 @@ func writeCheckToFile(checkName string, checkFileOutput *bytes.Buffer) {
 	filenameSafeTimeStamp := strings.ReplaceAll(time.Now().UTC().Format(time.RFC3339), ":", "-")
 	flarePath := filepath.Join(common.DefaultCheckFlareDirectory, "check_"+checkName+"_"+filenameSafeTimeStamp+".log")
 
-	w, err := flare.NewRedactingWriter(flarePath, os.ModePerm, true)
+	scrubbed, err := scrubber.ScrubBytes(checkFileOutput.Bytes())
 	if err != nil {
-		fmt.Println("Error while writing the check file:", err)
-		return
+		fmt.Println("Error while scrubbing the check file:", err)
 	}
-	defer w.Close()
-
-	_, err = w.Write(checkFileOutput.Bytes())
+	err = ioutil.WriteFile(flarePath, scrubbed, os.ModePerm)
 
 	if err != nil {
 		fmt.Println("Error while writing the check file (is the location writable by the dd-agent user?):", err)
